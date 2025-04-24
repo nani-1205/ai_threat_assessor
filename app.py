@@ -275,18 +275,19 @@ def evaluate_submission():
         try:
             evaluation_api_prompt = build_evaluation_prompt(original_prompt, original_response)
             logging.info(f"Sending evaluation request to {EVALUATION_MODEL_NAME}...")
-
+            print(f"Evaluation API Prompt: {evaluation_api_prompt}") # Debugging output
             # Explicitly request JSON output
             generation_config = genai.types.GenerationConfig(
                 response_mime_type="application/json"
             )
+            print(generation_config) # Debugging output
             eval_response = evaluation_model.generate_content(
                 evaluation_api_prompt,
                 generation_config=generation_config
                 # Consider adding safety_settings if needed for the evaluator model
                 # safety_settings=SAFETY_SETTINGS # Define SAFETY_SETTINGS if using
             )
-
+            print(f"Evaluation response: {eval_response}") # Debugging output
             # --- Process Evaluation Response ---
             if eval_response.candidates and eval_response.candidates[0].content and eval_response.candidates[0].content.parts:
                 evaluation_response_text = eval_response.candidates[0].content.parts[0].text
