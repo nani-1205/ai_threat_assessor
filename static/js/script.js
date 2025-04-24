@@ -10,14 +10,12 @@ async function updateCharts() {
         const response = await fetch('/chart_data');
         if (!response.ok) {
             console.error('Failed to fetch chart data:', response.status, response.statusText);
-            // Optionally display an error to the user on the page
             return;
         }
         const data = await response.json();
 
         if (data.error) {
              console.error('Error from chart_data endpoint:', data.error);
-             // Optionally display an error to the user
              return;
         }
         console.log("Chart data received:", data);
@@ -35,12 +33,12 @@ async function updateCharts() {
                 data: {
                     labels: data.labels, // ['Humanity Threatening', 'Bypasses EU Laws', 'Gender Biased']
                     datasets: [{
-                        label: '# of Times Flagged in Evaluation',
+                        label: '# Times Flagged', // Shortened label
                         data: data.label_values,
                         backgroundColor: [
-                            'rgba(220, 53, 69, 0.6)',  // Danger Red
-                            'rgba(255, 193, 7, 0.6)',  // Warning Orange
-                            'rgba(220, 53, 69, 0.6)'   // Danger Red (Consider distinct color for bias if needed)
+                            'rgba(220, 53, 69, 0.7)',  // Danger Red
+                            'rgba(255, 193, 7, 0.7)',  // Warning Orange
+                            'rgba(220, 53, 69, 0.7)'   // Danger Red (Bias)
                         ],
                         borderColor: [
                             'rgba(220, 53, 69, 1)',
@@ -51,16 +49,19 @@ async function updateCharts() {
                     }]
                 },
                 options: {
-                    indexAxis: 'y', // Optional: makes labels easier to read if long
+                    // indexAxis: 'y', // Keep as vertical bar chart
                     scales: {
-                        x: { // Changed from y for horizontal bars if indexAxis is 'y'
+                        y: { // Y-axis is value axis for vertical bar
                             beginAtZero: true,
                              ticks: { stepSize: 1, precision: 0 } // Ensure integer steps
                         }
                     },
                     responsive: true,
                     maintainAspectRatio: false,
-                    plugins: { legend: { display: false } }
+                    plugins: {
+                        legend: { display: false }, // Keep legend off for bar
+                        title: { display: true, text: 'Count of Specific Issues Flagged' } // Add title
+                     }
                 }
             });
         } else {
@@ -75,7 +76,7 @@ async function updateCharts() {
             if (flagPieChartInstance) {
                 flagPieChartInstance.destroy();
             }
-            // Define colors matching the order from backend: ['Red', 'Orange', 'Green', 'White']
+            const all_flags_order = ['Red', 'Orange', 'Green', 'White']; // Consistent order for colors
             const flagBackgroundColors = [
                  'rgba(220, 53, 69, 0.7)', // Red
                  'rgba(255, 193, 7, 0.7)',  // Orange
@@ -89,23 +90,41 @@ async function updateCharts() {
                  'rgba(150, 150, 150, 1)'
             ];
 
-            // Filter data to only include flags with count > 0 if desired for cleaner pie chart
-            const filteredFlags = data.flags.filter((_, index) => data.flag_values[index] > 0);
-            const filteredValues = data.flag_values.filter(value => value > 0);
-            const filteredBgColors = data.flags.map((flag, index) => data.flag_values[index] > 0 ? flagBackgroundColors[all_flags_order.indexOf(flag)] : null).filter(color => color !== null);
-            const filteredBorderColors = data.flags.map((flag, index) => data.flag_values[index] > 0 ? flagBorderColors[all_flags_order.indexOf(flag)] : null).filter(color => color !== null);
-            const all_flags_order = ['Red', 'Orange', 'Green', 'White']; // Ensure consistent color mapping
+            // Filter data to avoid showing 0-count slices in the pie chart
+            const filteredData = { flags: [], values: [], bgColors: [], borderColors: [] };
+            let totalValue = 0;
+            data.flags.forEach((flag, index) => {
+                const value = data.flag_values[index];
+                totalValue += value;
+                if (value > 0) {
+                    const colorIndex = all_flags_order.indexOf(flag);
+                    if (colorIndex !== -1) {
+                        filteredData.flags.push(flag);
+                        filteredData.values.push(value);
+                        filteredData.bgColors.push(flagBackgroundColors[colorIndex]);
+                        filteredData.borderColors.push(flagBorderColors[colorIndex]);
+                    }
+                }
+            });
+
+            // Handle case where there's no data at all
+            if (totalValue === 0) {
+                filteredData.flags = ['No Data'];
+                filteredData.values = [1];
+                filteredData.bgColors = ['rgba(220, 220, 220, 0.7)']; // Gray for no data
+                filteredData.borderColors = ['rgba(180, 180, 180, 1)'];
+            }
 
 
             flagPieChartInstance = new Chart(pieCtx, {
                 type: 'pie',
                 data: {
-                    labels: filteredFlags.length > 0 ? filteredFlags : ['No Data'], // Use filtered data
+                    labels: filteredData.flags,
                     datasets: [{
-                        label: 'Overall Risk Flags',
-                        data: filteredValues.length > 0 ? filteredValues : [1], // Use filtered data
-                        backgroundColor: filteredBgColors.length > 0 ? filteredBgColors : ['rgba(200, 200, 200, 0.7)'], // Default color if no data
-                        borderColor: filteredBorderColors.length > 0 ? filteredBorderColors : ['rgba(150, 150, 150, 1)'],
+                        label: 'Flags', // Shorter label
+                        data: filteredData.values,
+                        backgroundColor: filteredData.bgColors,
+                        borderColor: filteredData.borderColors,
                         borderWidth: 1
                     }]
                 },
@@ -113,19 +132,27 @@ async function updateCharts() {
                     responsive: true,
                     maintainAspectRatio: false,
                      plugins: {
-                         legend: { position: 'top', },
+                         legend: {
+                            position: 'top', // Legend position
+                            labels: { padding: 15 } // Add padding to legend items
+                         },
+                         title: { display: true, text: 'Distribution of Overall Risk Flags' }, // Add title
                          tooltip: {
                               callbacks: {
                                 label: function(context) {
-                                    // Avoid showing tooltip for 'No Data' slice
-                                    if (context.label === 'No Data') return null;
+                                    if (context.label === 'No Data') return null; // Hide tooltip for "No Data"
 
                                     let label = context.label || '';
                                     if (label) label += ': ';
-                                    if (context.parsed !== null) label += context.parsed;
-                                     const total = context.dataset.data.reduce((a, b) => a + b, 0);
-                                     const percentage = total > 0 ? Math.round((context.parsed / total) * 100) : 0;
+                                    const value = context.parsed || 0;
+                                    label += value;
+
+                                    // Calculate percentage using the *original* total count if needed, or filtered total
+                                    // Using filtered total for percentage of shown slices:
+                                     const filteredTotal = context.dataset.data.reduce((a, b) => a + b, 0);
+                                     const percentage = filteredTotal > 0 ? Math.round((value / filteredTotal) * 100) : 0;
                                      label += ` (${percentage}%)`;
+
                                     return label;
                                 }
                             }

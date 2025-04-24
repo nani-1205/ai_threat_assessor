@@ -8,38 +8,45 @@
     <div class="col-md-6 mb-4">
         <div class="card">
             <div class="card-header">
-                <h5><i class="bi bi-journal-text"></i> Submit Prompt & Response for Evaluation</h5>
+                <h5><i class="bi bi-journal-text"></i> Submit Conversation for Evaluation</h5>
             </div>
             <div class="card-body">
                 <form action="{{ url_for('evaluate_submission') }}" method="POST">
                     <div class="mb-3">
-                        <label for="original_prompt_text" class="form-label">Original Prompt:</label>
-                        <textarea class="form-control" id="original_prompt_text" name="original_prompt_text" rows="4" required placeholder="Paste the exact prompt you sent to the AI model."></textarea>
+                        <label for="source_llm_model_text" class="form-label">Source LLM Model Name:</label>
+                        <input type="text" class="form-control" id="source_llm_model_text" name="source_llm_model_text" required placeholder="e.g., gpt-4-turbo, claude-3-sonnet">
                     </div>
                     <div class="mb-3">
-                        <label for="original_response_text" class="form-label">Original Response:</label>
-                        <textarea class="form-control" id="original_response_text" name="original_response_text" rows="8" required placeholder="Paste the full response you received from the AI model."></textarea>
+                        <label for="conversation_json" class="form-label">Conversation History (JSON Format):</label>
+                        <textarea class="form-control" id="conversation_json" name="conversation_json" rows="10" required placeholder='Paste conversation as JSON list, e.g.,\n[\n  {"role": "user", "content": "Hello there."},\n  {"role": "assistant", "content": "Hi! How can I help?"}\n]'></textarea>
+                         <div class="form-text">
+                             Expected format: A JSON list `[ ]` containing dictionaries `{ }` with `"role"` (`"user"` or `"assistant"`) and `"content"` keys for each turn.
+                         </div>
                     </div>
-                    <button type="submit" class="btn btn-primary"><i class="bi bi-search"></i> Evaluate Submission</button>
+                    <button type="submit" class="btn btn-primary"><i class="bi bi-search"></i> Evaluate Conversation</button>
                 </form>
             </div>
         </div>
 
         <!-- Display Evaluation Results (if available from last submission) -->
-        {% if submitted_prompt or evaluation_result is not none or current_flag_color == 'White' %} {# Show if just submitted or error occurred #}
+        {% if submitted_conversation or evaluation_result is not none or current_flag_color == 'White' %} {# Show if just submitted or error occurred #}
         <div class="card mt-4">
             <div class="card-header">
                  <h5><i class="bi bi-clipboard-check"></i> Last Evaluation Result</h5>
             </div>
             <div class="card-body">
-                {% if submitted_prompt %}
+                {% if submitted_conversation %}
                 <div class="mb-3">
-                    <strong>Original Prompt Submitted:</strong>
-                    <pre class="response-box bg-light p-2 rounded">{{ submitted_prompt | escape }}</pre>
+                    <strong>Source LLM Model Tested:</strong> {{ submitted_source_llm | escape }}
                 </div>
-                 <div class="mb-3">
-                    <strong>Original Response Submitted:</strong>
-                    <pre class="response-box bg-light p-2 rounded">{{ submitted_response | escape }}</pre>
+                <div class="mb-3">
+                    <strong>Conversation Submitted:</strong>
+                     <div class="response-box bg-light p-2 rounded" style="max-height: 300px; overflow-y: auto;">
+                        {% for turn in submitted_conversation %}
+                            <p class="mb-1"><strong>{{ turn.role | capitalize }}:</strong> {{ turn.content | escape }}</p>
+                            {% if not loop.last %}<hr class="my-1">{% endif %}
+                        {% endfor %}
+                    </div>
                 </div>
                 <hr>
                 {% endif %}
@@ -71,6 +78,7 @@
                              </li>
                              <li class="list-group-item d-flex justify-content-between align-items-center fw-bold">
                                  Overall Flag:
+                                 {# Use the flag calculated in the backend #}
                                  <span><span class="flag-indicator {{ get_flag_css_class(current_flag_color) }}"></span> {{ current_flag_color }}</span>
                              </li>
                          </ul>
@@ -79,17 +87,18 @@
                             <h6 class="alert-heading">Evaluation Parsing Error</h6>
                             Evaluation completed, but the response format was unexpected. Could not parse details. The overall flag is set to White.
                           </div>
-                          <strong>Raw Evaluation Response (may be truncated):</strong>
+                          <strong>Raw Evaluation Response (truncated):</strong>
                           <pre class="response-box bg-light p-2 rounded">{{ evaluation_raw[:1000] | escape }} {% if evaluation_raw|length > 1000 %}...{% endif %}</pre>
                            <strong>Overall Flag:</strong> <span class="flag-indicator flag-white"></span> White (Parse Error)
-                     {% elif submitted_prompt %} {# API call failed or blocked, and a submission was attempted #}
+                     {% elif submitted_conversation %} {# API call failed or blocked, and a submission was attempted #}
                          <div class="alert alert-danger" role="alert">
                             <h6 class="alert-heading">Evaluation Failed</h6>
-                            The AI evaluation failed, was blocked by safety settings, or encountered an API error. Check application logs. The overall flag is set to White.
+                            The AI evaluation failed, was blocked, or encountered an API error. Check application logs. The overall flag is set to White.
                          </div>
                          <strong>Overall Flag:</strong> <span class="flag-indicator flag-white"></span> White (Evaluation Error)
                      {% else %}
                         {# Section is shown but nothing specific to display yet - e.g. initial load error #}
+                         <p class="text-muted">Submit a conversation above to see the evaluation result.</p>
                      {% endif %}
                 </div>
             </div>
@@ -103,20 +112,12 @@
     <!-- Charts Section -->
     <div class="col-md-6 mb-4">
         <div class="card mb-4">
-             <div class="card-header">
-                <h5><i class="bi bi-bar-chart-line-fill"></i> Evaluation Label Distribution</h5>
-            </div>
-            <div class="card-body">
-                 <canvas id="labelBarChart"></canvas>
-            </div>
+             <div class="card-header"><h5><i class="bi bi-bar-chart-line-fill"></i> Evaluation Label Distribution</h5></div>
+             <div class="card-body"><canvas id="labelBarChart"></canvas></div>
         </div>
         <div class="card">
-             <div class="card-header">
-                <h5><i class="bi bi-pie-chart-fill"></i> Overall Risk Flags Distribution</h5>
-            </div>
-             <div class="card-body">
-                <canvas id="flagPieChart"></canvas>
-            </div>
+             <div class="card-header"><h5><i class="bi bi-pie-chart-fill"></i> Overall Risk Flags Distribution</h5></div>
+             <div class="card-body"><canvas id="flagPieChart"></canvas></div>
         </div>
     </div> <!-- End col-md-6 for charts -->
 </div>
@@ -136,8 +137,8 @@
                         <thead>
                             <tr>
                                 <th scope="col" style="width: 5%;">Flag</th>
-                                <th scope="col" style="width: 25%;">Original Prompt (Excerpt)</th>
-                                <th scope="col" style="width: 30%;">Original Response (Excerpt)</th>
+                                <th scope="col" style="width: 15%;">Source LLM</th>
+                                <th scope="col" style="width: 40%;">Conversation Excerpt</th>
                                 <th scope="col" style="width: 20%;">Evaluation Summary</th>
                                 <th scope="col" style="width: 20%;">Timestamp (UTC)</th>
                             </tr>
@@ -145,22 +146,36 @@
                         <tbody>
                             {% for assessment in assessments %}
                             <tr>
-                                <!-- Flag based on evaluation -->
                                 <td><span class="flag-indicator {{ assessment.flag_css }}"></span></td>
-                                <!-- Show original prompt/response -->
-                                <td><div style="max-height: 100px; overflow-y: auto;">{{ assessment.original_prompt | escape }}</div></td>
-                                <td><div style="max-height: 100px; overflow-y: auto;">{{ assessment.original_response | escape }}</div></td>
-                                <!-- Show evaluation labels or error status -->
+                                <td>{{ assessment.source_llm_model | escape }}</td>
                                 <td>
-                                    {% set eval_data = assessment.parsed_evaluation %} {# Shorthand #}
-                                    {% if eval_data %} {# Check if parsing succeeded #}
+                                    {# Show first user and last assistant utterance as excerpt #}
+                                    {% if assessment.conversation and assessment.conversation|length > 0 %}
+                                        <div class="conversation-excerpt">
+                                            {% set first_user_turn = assessment.conversation | selectattr('role', 'equalto', 'user') | first %}
+                                            {% set last_assistant_turn = assessment.conversation | selectattr('role', 'equalto', 'assistant') | last %}
+                                            {% if first_user_turn %}
+                                            <p class="mb-1"><small><strong>User:</strong> {{ first_user_turn.content[:80] | escape }}{% if first_user_turn.content|length > 80 %}...{% endif %}</small></p>
+                                            {% endif %}
+                                             {% if last_assistant_turn %}
+                                            <p class="mb-0"><small><strong>Asst:</strong> {{ last_assistant_turn.content[:80] | escape }}{% if last_assistant_turn.content|length > 80 %}...{% endif %}</small></p>
+                                            {% endif %}
+                                            <small class="text-muted"> ({{ assessment.conversation|length }} turns)</small>
+                                        </div>
+                                    {% else %}
+                                        <small>[No conversation data]</small>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% set eval_data = assessment.parsed_evaluation %}
+                                    {% if eval_data %}
                                         {% if eval_data.is_humanity_threatening %}<span class="badge bg-danger" title="{{ eval_data.explanation | escape }}">Threat</span>{% endif %}
                                         {% if eval_data.bypasses_eu_laws %}<span class="badge bg-warning text-dark" title="{{ eval_data.explanation | escape }}">EU Law</span>{% endif %}
                                         {% if eval_data.is_gender_biased %}<span class="badge bg-danger" title="{{ eval_data.explanation | escape }}">Biased</span>{% endif %}
                                         {% if not eval_data.is_humanity_threatening and not eval_data.bypasses_eu_laws and not eval_data.is_gender_biased %}<span class="badge bg-success" title="{{ eval_data.explanation | escape }}">OK</span>{% endif %}
-                                    {% elif assessment.evaluation_response_raw is not none %} {# Parsing failed, raw exists #}
+                                    {% elif assessment.evaluation_response_raw is not none %}
                                         <span class="badge bg-secondary">Parse Error</span>
-                                    {% else %} {# Evaluation failed/blocked, no raw response stored maybe #}
+                                    {% else %}
                                          <span class="badge bg-secondary">Eval Error</span>
                                     {% endif %}
                                 </td>
@@ -180,10 +195,8 @@
 {% endblock %}
 
 {% block scripts %}
-<!-- Ensure Bootstrap JS is loaded before custom script -->
 <script src="{{ url_for('static', filename='js/script.js') }}"></script>
 <script>
-    // Initialize charts once DOM is ready
     document.addEventListener('DOMContentLoaded', initializeCharts);
 </script>
 {% endblock %}
