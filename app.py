@@ -315,4 +315,4 @@ if __name__ == '__main__':
     get_db_collection()
     # Use host='0.0.0.0' to make it accessible on your network if needed
     # Use debug=True only for development, not production
-    app.run(debug=True, host='127.0.0.1', port=5000)
+    app.run(debug=True, host='0.0.0.0', port=5000)
