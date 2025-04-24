@@ -11,16 +11,17 @@
                 <h5><i class="bi bi-journal-text"></i> Submit Conversation for Evaluation</h5>
             </div>
             <div class="card-body">
+                {# UPDATED Form to accept raw text #}
                 <form action="{{ url_for('evaluate_submission') }}" method="POST">
                     <div class="mb-3">
                         <label for="source_llm_model_text" class="form-label">Source LLM Model Name:</label>
-                        <input type="text" class="form-control" id="source_llm_model_text" name="source_llm_model_text" required placeholder="e.g., gpt-4-turbo, claude-3-sonnet">
+                        <input type="text" class="form-control" id="source_llm_model_text" name="source_llm_model_text" required placeholder="e.g., gpt-4-turbo, claude-3-sonnet" value="{{ submitted_source_llm if submitted_source_llm }}">
                     </div>
                     <div class="mb-3">
-                        <label for="conversation_json" class="form-label">Conversation History (JSON Format):</label>
-                        <textarea class="form-control" id="conversation_json" name="conversation_json" rows="10" required placeholder='Paste conversation as JSON list, e.g.,\n[\n  {"role": "user", "content": "Hello there."},\n  {"role": "assistant", "content": "Hi! How can I help?"}\n]'></textarea>
+                        <label for="conversation_raw_text" class="form-label">Conversation History (Raw Text):</label>
+                        <textarea class="form-control" id="conversation_raw_text" name="conversation_raw_text" rows="10" required placeholder='Paste raw chat history here. Use prefixes like "User:", "Assistant:", "AI:" etc. to indicate roles. Example:\n\nUser: Hello there.\nAssistant: Hi! How can I help?\nUser: Tell me about Flask.'>{{ submitted_conversation_raw if submitted_conversation_raw }}</textarea>
                          <div class="form-text">
-                             Expected format: A JSON list `[ ]` containing dictionaries `{ }` with `"role"` (`"user"` or `"assistant"`) and `"content"` keys for each turn.
+                             The app will parse turns based on lines starting with "User:", "Assistant:", "AI:", "You:", "Prompt:", "Response:", etc. (case-insensitive). Ensure each turn starts on a new line with its role prefix.
                          </div>
                     </div>
                     <button type="submit" class="btn btn-primary"><i class="bi bi-search"></i> Evaluate Conversation</button>
@@ -28,78 +29,61 @@
             </div>
         </div>
 
-        <!-- Display Evaluation Results (if available from last submission) -->
-        {% if submitted_conversation or evaluation_result is not none or current_flag_color == 'White' %} {# Show if just submitted or error occurred #}
+        <!-- Display Evaluation Results -->
+        {# UPDATED to show raw and potentially parsed conversation #}
+        {% if submitted_conversation_raw or submitted_conversation_parsed or evaluation_result is not none or current_flag_color == 'White' %}
         <div class="card mt-4">
             <div class="card-header">
                  <h5><i class="bi bi-clipboard-check"></i> Last Evaluation Result</h5>
             </div>
             <div class="card-body">
-                {% if submitted_conversation %}
+                {% if submitted_source_llm %}
                 <div class="mb-3">
                     <strong>Source LLM Model Tested:</strong> {{ submitted_source_llm | escape }}
                 </div>
-                <div class="mb-3">
-                    <strong>Conversation Submitted:</strong>
-                     <div class="response-box bg-light p-2 rounded" style="max-height: 300px; overflow-y: auto;">
-                        {% for turn in submitted_conversation %}
-                            <p class="mb-1"><strong>{{ turn.role | capitalize }}:</strong> {{ turn.content | escape }}</p>
+                {% endif %}
+                {% if submitted_conversation_raw %}
+                 <div class="mb-3">
+                    <strong>Raw Conversation Submitted:</strong>
+                    <pre class="response-box bg-light p-2 rounded" style="max-height: 200px; overflow-y: auto;">{{ submitted_conversation_raw | escape }}</pre>
+                </div>
+                {% endif %}
+                {% if submitted_conversation_parsed %}
+                 <div class="mb-1"> {# Reduced margin #}
+                    <strong>Parsed Conversation (Used for Evaluation):</strong>
+                     <div class="response-box bg-light p-2 rounded border-success border-2" style="max-height: 200px; overflow-y: auto;"> {# Added border #}
+                        {% for turn in submitted_conversation_parsed %}
+                            <p class="mb-1"><small><strong>{{ turn.role | capitalize }}:</strong> {{ turn.content | escape }}</small></p>
                             {% if not loop.last %}<hr class="my-1">{% endif %}
                         {% endfor %}
                     </div>
                 </div>
-                <hr>
                 {% endif %}
+
+                {# Add divider only if submission details were shown #}
+                {% if submitted_source_llm or submitted_conversation_raw or submitted_conversation_parsed %}
+                 <hr>
+                {% endif %}
+
 
                 <div class="mb-3">
                      <strong>Evaluation Outcome:</strong>
                      {% if evaluation_result %} {# Parsed successfully #}
                          <ul class="list-group list-group-flush">
-                             <li class="list-group-item d-flex justify-content-between align-items-center">
-                                 Humanity Threatening?
-                                 <span class="badge rounded-pill {{ 'bg-danger' if evaluation_result.is_humanity_threatening else 'bg-success' }}">
-                                     {{ 'YES' if evaluation_result.is_humanity_threatening else 'NO' }}
-                                 </span>
-                             </li>
-                             <li class="list-group-item d-flex justify-content-between align-items-center">
-                                 Bypassing EU Laws?
-                                 <span class="badge rounded-pill {{ 'bg-warning text-dark' if evaluation_result.bypasses_eu_laws else 'bg-success' }}">
-                                     {{ 'YES' if evaluation_result.bypasses_eu_laws else 'NO' }}
-                                 </span>
-                             </li>
-                             <li class="list-group-item d-flex justify-content-between align-items-center">
-                                 Gender Biased?
-                                  <span class="badge rounded-pill {{ 'bg-danger' if evaluation_result.is_gender_biased else 'bg-success' }}">
-                                     {{ 'YES' if evaluation_result.is_gender_biased else 'NO' }}
-                                 </span>
-                             </li>
-                              <li class="list-group-item">
-                                 <strong>Explanation:</strong> {{ evaluation_result.explanation | escape }}
-                             </li>
-                             <li class="list-group-item d-flex justify-content-between align-items-center fw-bold">
-                                 Overall Flag:
-                                 {# Use the flag calculated in the backend #}
-                                 <span><span class="flag-indicator {{ get_flag_css_class(current_flag_color) }}"></span> {{ current_flag_color }}</span>
-                             </li>
+                             <li class="list-group-item d-flex justify-content-between align-items-center">Humanity Threatening?<span class="badge rounded-pill {{ 'bg-danger' if evaluation_result.is_humanity_threatening else 'bg-success' }}">{{ 'YES' if evaluation_result.is_humanity_threatening else 'NO' }}</span></li>
+                             <li class="list-group-item d-flex justify-content-between align-items-center">Bypassing EU Laws?<span class="badge rounded-pill {{ 'bg-warning text-dark' if evaluation_result.bypasses_eu_laws else 'bg-success' }}">{{ 'YES' if evaluation_result.bypasses_eu_laws else 'NO' }}</span></li>
+                             <li class="list-group-item d-flex justify-content-between align-items-center">Gender Biased?<span class="badge rounded-pill {{ 'bg-danger' if evaluation_result.is_gender_biased else 'bg-success' }}">{{ 'YES' if evaluation_result.is_gender_biased else 'NO' }}</span></li>
+                             <li class="list-group-item"><strong>Explanation:</strong> {{ evaluation_result.explanation | escape }}</li>
+                             <li class="list-group-item d-flex justify-content-between align-items-center fw-bold">Overall Flag:<span><span class="flag-indicator {{ get_flag_css_class(current_flag_color) }}"></span> {{ current_flag_color }}</span></li>
                          </ul>
-                     {% elif evaluation_raw %} {# Parsing failed, but got raw response #}
-                          <div class="alert alert-warning" role="alert">
-                            <h6 class="alert-heading">Evaluation Parsing Error</h6>
-                            Evaluation completed, but the response format was unexpected. Could not parse details. The overall flag is set to White.
-                          </div>
-                          <strong>Raw Evaluation Response (truncated):</strong>
-                          <pre class="response-box bg-light p-2 rounded">{{ evaluation_raw[:1000] | escape }} {% if evaluation_raw|length > 1000 %}...{% endif %}</pre>
-                           <strong>Overall Flag:</strong> <span class="flag-indicator flag-white"></span> White (Parse Error)
-                     {% elif submitted_conversation %} {# API call failed or blocked, and a submission was attempted #}
-                         <div class="alert alert-danger" role="alert">
-                            <h6 class="alert-heading">Evaluation Failed</h6>
-                            The AI evaluation failed, was blocked, or encountered an API error. Check application logs. The overall flag is set to White.
-                         </div>
+                     {% elif evaluation_raw %} {# Parsing failed #}
+                          <div class="alert alert-warning" role="alert"><h6 class="alert-heading">Evaluation Parsing Error</h6>Could not parse details from AI eval response. Flag: White.</div>
+                          <strong>Raw Eval Response:</strong><pre class="response-box bg-light p-2 rounded">{{ evaluation_raw[:1000] | escape }} {% if evaluation_raw|length > 1000 %}...{% endif %}</pre>
+                          <strong>Overall Flag:</strong> <span class="flag-indicator flag-white"></span> White (Parse Error)
+                     {% elif submitted_source_llm %} {# API call failed/blocked/no model #}
+                         <div class="alert alert-danger" role="alert"><h6 class="alert-heading">Evaluation Failed</h6>AI evaluation failed/blocked/model unavailable. Check logs. Flag: White.</div>
                          <strong>Overall Flag:</strong> <span class="flag-indicator flag-white"></span> White (Evaluation Error)
-                     {% else %}
-                        {# Section is shown but nothing specific to display yet - e.g. initial load error #}
-                         <p class="text-muted">Submit a conversation above to see the evaluation result.</p>
-                     {% endif %}
+                     {% else %}<p class="text-muted">Submit a conversation above.</p>{% endif %}
                 </div>
             </div>
         </div>
@@ -111,14 +95,8 @@
 
     <!-- Charts Section -->
     <div class="col-md-6 mb-4">
-        <div class="card mb-4">
-             <div class="card-header"><h5><i class="bi bi-bar-chart-line-fill"></i> Evaluation Label Distribution</h5></div>
-             <div class="card-body"><canvas id="labelBarChart"></canvas></div>
-        </div>
-        <div class="card">
-             <div class="card-header"><h5><i class="bi bi-pie-chart-fill"></i> Overall Risk Flags Distribution</h5></div>
-             <div class="card-body"><canvas id="flagPieChart"></canvas></div>
-        </div>
+        <div class="card mb-4"> <div class="card-header"><h5><i class="bi bi-bar-chart-line-fill"></i> Evaluation Label Distribution</h5></div> <div class="card-body"><canvas id="labelBarChart"></canvas></div> </div>
+        <div class="card"> <div class="card-header"><h5><i class="bi bi-pie-chart-fill"></i> Overall Risk Flags Distribution</h5></div> <div class="card-body"><canvas id="flagPieChart"></canvas></div> </div>
     </div> <!-- End col-md-6 for charts -->
 </div>
 
@@ -127,51 +105,27 @@
 <div class="row mt-4">
     <div class="col-12">
         <div class="card">
-            <div class="card-header">
-                <h5><i class="bi bi-clock-history"></i> Evaluation History (Last 50)</h5>
-            </div>
+            <div class="card-header"> <h5><i class="bi bi-clock-history"></i> Evaluation History (Last 50)</h5> </div>
             <div class="card-body">
                 {% if assessments %}
                 <div class="table-responsive">
                     <table class="table table-striped table-hover table-sm">
-                        <thead>
-                            <tr>
-                                <th scope="col" style="width: 5%;">Flag</th>
-                                <th scope="col" style="width: 15%;">Source LLM</th>
-                                <th scope="col" style="width: 40%;">Conversation Excerpt</th>
-                                <th scope="col" style="width: 20%;">Evaluation Summary</th>
-                                <th scope="col" style="width: 20%;">Timestamp (UTC)</th>
-                            </tr>
-                        </thead>
+                        <thead> <tr> <th scope="col" style="width: 5%;">Flag</th> <th scope="col" style="width: 15%;">Source LLM</th> <th scope="col" style="width: 40%;">Conversation Excerpt</th> <th scope="col" style="width: 20%;">Evaluation Summary</th> <th scope="col" style="width: 20%;">Timestamp (UTC)</th> </tr> </thead>
                         <tbody>
                             {% for assessment in assessments %}
                             <tr>
                                 <td><span class="flag-indicator {{ assessment.flag_css }}"></span></td>
                                 <td>{{ assessment.source_llm_model | escape }}</td>
-                                <td>
-                                    {# Show first user and last assistant utterance as excerpt #}
+                                <td> {# Show first user/last assistant from PARSED data #}
                                     {% if assessment.conversation and assessment.conversation|length > 0 %}
                                         <div class="conversation-excerpt">
-                                            {# --- ADDED | list here --- #}
                                             {% set first_user_turn = assessment.conversation | selectattr('role', 'equalto', 'user') | list | first %}
-                                            {# --- ADDED | list here --- #}
                                             {% set last_assistant_turn = assessment.conversation | selectattr('role', 'equalto', 'assistant') | list | last %}
-
-                                            {% if first_user_turn %}
-                                            <p class="mb-1"><small><strong>User:</strong> {{ first_user_turn.content[:80] | escape }}{% if first_user_turn.content|length > 80 %}...{% endif %}</small></p>
-                                            {% else %}
-                                             <p class="mb-1"><small><strong>User:</strong> [N/A]</small></p>
-                                            {% endif %}
-                                             {% if last_assistant_turn %}
-                                            <p class="mb-0"><small><strong>Asst:</strong> {{ last_assistant_turn.content[:80] | escape }}{% if last_assistant_turn.content|length > 80 %}...{% endif %}</small></p>
-                                             {% else %}
-                                             <p class="mb-0"><small><strong>Asst:</strong> [N/A]</small></p>
-                                             {% endif %}
+                                            {% if first_user_turn %} <p class="mb-1"><small><strong>User:</strong> {{ first_user_turn.content[:80] | escape }}{% if first_user_turn.content|length > 80 %}...{% endif %}</small></p> {% else %} <p class="mb-1"><small><strong>User:</strong> [N/A]</small></p> {% endif %}
+                                            {% if last_assistant_turn %} <p class="mb-0"><small><strong>Asst:</strong> {{ last_assistant_turn.content[:80] | escape }}{% if last_assistant_turn.content|length > 80 %}...{% endif %}</small></p> {% else %} <p class="mb-0"><small><strong>Asst:</strong> [N/A]</small></p> {% endif %}
                                             <small class="text-muted"> ({{ assessment.conversation|length }} turns)</small>
                                         </div>
-                                    {% else %}
-                                        <small>[No conversation data]</small>
-                                    {% endif %}
+                                    {% else %} <small>[No conversation data]</small> {% endif %}
                                 </td>
                                 <td> {# Evaluation Summary Logic #}
                                     {% set eval_data = assessment.parsed_evaluation %}
@@ -180,11 +134,8 @@
                                         {% if eval_data.bypasses_eu_laws %}<span class="badge bg-warning text-dark" title="{{ eval_data.explanation | escape }}">EU Law</span>{% endif %}
                                         {% if eval_data.is_gender_biased %}<span class="badge bg-danger" title="{{ eval_data.explanation | escape }}">Biased</span>{% endif %}
                                         {% if not eval_data.is_humanity_threatening and not eval_data.bypasses_eu_laws and not eval_data.is_gender_biased %}<span class="badge bg-success" title="{{ eval_data.explanation | escape }}">OK</span>{% endif %}
-                                    {% elif assessment.get('evaluation_response_raw') is not none %} {# Check using .get() #}
-                                        <span class="badge bg-secondary">Parse Error</span>
-                                    {% else %}
-                                         <span class="badge bg-secondary">Eval Error</span>
-                                    {% endif %}
+                                    {% elif assessment.get('evaluation_response_raw') is not none %} <span class="badge bg-secondary">Parse Error</span>
+                                    {% else %} <span class="badge bg-secondary">Eval Error</span> {% endif %}
                                 </td>
                                 <td>{{ assessment.timestamp.strftime('%Y-%m-%d %H:%M:%S') if assessment.timestamp else 'N/A' }}</td>
                             </tr>
@@ -192,9 +143,7 @@
                         </tbody>
                     </table>
                 </div>
-                {% else %}
-                <p class="text-center text-muted">No evaluation history found or database connection issue.</p>
-                {% endif %}
+                {% else %} <p class="text-center text-muted">No evaluation history found.</p> {% endif %}
             </div>
         </div>
     </div>
@@ -203,8 +152,5 @@
 
 {% block scripts %}
 <script src="{{ url_for('static', filename='js/script.js') }}"></script>
-<script>
-    // Initialize charts once DOM is ready
-    document.addEventListener('DOMContentLoaded', initializeCharts);
-</script>
+<script> document.addEventListener('DOMContentLoaded', initializeCharts); </script>
 {% endblock %}
