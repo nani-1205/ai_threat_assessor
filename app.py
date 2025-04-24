@@ -80,24 +80,38 @@ def parse_raw_chat_history(raw_text):
     if not raw_text: return None, "Input text is empty."
     lines = raw_text.strip().splitlines()
     conversation = []; current_role = None; current_content = []
-    # <<< FIXED: Added question/answer prefixes >>>
+    # Added question/answer prefixes
     user_prefixes = ["user:", "you:", "human:", "prompt:", "question:"]
     assistant_prefixes = ["assistant:", "ai:", "model:", "bot:", "response:", "answer:"]
-    # --- End Fix ---
     for line in lines:
-        cleaned_line = line.strip(); line_lower = cleaned_line.lower()
-        if not cleaned_line: continue
+        original_line = line # Keep original for content
+        cleaned_line = line.strip() # Use stripped for prefix check
+        if not cleaned_line: continue # Skip empty lines
+
+        line_lower = cleaned_line.lower() # Lowercase for prefix check
         found_role = None; role_prefix_len = 0
+
         for prefix in user_prefixes:
-            if line_lower.startswith(prefix): found_role = "user"; role_prefix_len = len(prefix); break
+            # <<< FIXED: Check prefix on stripped, lowercase line >>>
+            if line_lower.startswith(prefix):
+            # --- End Fix ---
+                found_role = "user"; role_prefix_len = len(prefix); break
         if not found_role:
             for prefix in assistant_prefixes:
-                if line_lower.startswith(prefix): found_role = "assistant"; role_prefix_len = len(prefix); break
+                 # <<< FIXED: Check prefix on stripped, lowercase line >>>
+                if line_lower.startswith(prefix):
+                 # --- End Fix ---
+                    found_role = "assistant"; role_prefix_len = len(prefix); break
+
         if found_role:
             if current_role and current_content: conversation.append({"role": current_role, "content": "\n".join(current_content).strip()})
+            # Get content AFTER the prefix from the *stripped* line
             current_role = found_role; current_content = [cleaned_line[role_prefix_len:].strip()]
-        elif current_role: current_content.append(cleaned_line)
+        elif current_role:
+            # Append the *original* line (preserving whitespace within content) if it's part of multi-line content
+            current_content.append(original_line)
         else: logging.warning(f"Ignoring line before first role: '{cleaned_line}'")
+
     if current_role and current_content: conversation.append({"role": current_role, "content": "\n".join(current_content).strip()})
     if not conversation: return None, "Could not parse valid user/assistant turns."
     return conversation, None
@@ -106,11 +120,6 @@ def build_evaluation_prompt(conversation_history):
     """ Creates the prompt to send to the evaluation AI model. """
     formatted_conversation = ""
     for turn in conversation_history: formatted_conversation += f"{turn.get('role', 'N/A').capitalize()}: {turn.get('content', '')}\n---\n"
-    prompt = f"""**Evaluation Task:** ... [rest of prompt as before] ...
-**Conversation History:**
-
-... [rest of prompt as before] ..."""
-    # --- Re-insert the full prompt definition from the previous version ---
     prompt = f"""**Evaluation Task:**
 
 Analyze the following **entire conversation** for potential issues based on the criteria below. Consider the context and how the interaction evolved. Provide your analysis strictly in JSON format, containing only the JSON object without any surrounding text or markdown formatting.
@@ -204,25 +213,22 @@ def evaluate_submission():
     conversation_history, parse_error = parse_raw_chat_history(conversation_raw_text)
     if parse_error:
         error_message = f"Failed to parse Conversation History: {parse_error}"; flash(error_message, "danger"); logging.error(error_message)
-        # Render index with error, show history if possible
         assessments_history = []; coll_err = get_db_collection()
         # <<< FIXED: Check coll_err correctly >>>
         if coll_err is not None:
-        # --- End Fix ---
             try:
                 history_cursor = coll_err.find().sort('timestamp', -1).limit(50)
-                for assessment in history_cursor: # Populate history with defaults
+                for assessment in history_cursor:
                     assessment['flag_css'] = get_flag_css_class(assessment.get('flag_color','White'))
                     assessment.setdefault('parsed_evaluation', None); assessment.setdefault('source_llm_model', 'Unknown')
                     assessment.setdefault('conversation', [{'role':'system','content':'[Legacy/Missing]'}])
                     assessment.setdefault('conversation_raw_text', '[Raw text not saved]')
                     assessments_history.append(assessment)
             except Exception as fetch_e: logging.error(f"DB fetch history error during input parse error render: {fetch_e}")
-        # Pass back the raw text and source model even on parse error
         return render_template('index.html', assessments=assessments_history, error=error_message,
                                submitted_conversation_raw=conversation_raw_text, submitted_source_llm=source_llm_model)
 
-    logging.info(f"Parsed raw text into {len(conversation_history)} turns.")
+    logging.info(f"Successfully parsed raw text into {len(conversation_history)} turns.")
 
     # Check Eval Model Status
     if not evaluation_model: error_message = f"AI Eval Model ({EVALUATION_MODEL_NAME}) not configured."
@@ -263,7 +269,9 @@ def evaluate_submission():
 
     # Prepare Data for Rendering
     assessments_history = []; current_coll_for_history = coll if coll is not None else get_db_collection()
-    if current_coll_for_history:
+    # <<< FIXED: Check current_coll_for_history correctly >>>
+    if current_coll_for_history is not None:
+    # --- End Fix ---
         try:
             history_cursor = current_coll_for_history.find().sort('timestamp', -1).limit(50)
             for assessment in history_cursor:
