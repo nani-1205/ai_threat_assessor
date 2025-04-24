@@ -152,28 +152,35 @@
                                     {# Show first user and last assistant utterance as excerpt #}
                                     {% if assessment.conversation and assessment.conversation|length > 0 %}
                                         <div class="conversation-excerpt">
-                                            {% set first_user_turn = assessment.conversation | selectattr('role', 'equalto', 'user') | first %}
-                                            {% set last_assistant_turn = assessment.conversation | selectattr('role', 'equalto', 'assistant') | last %}
+                                            {# --- ADDED | list here --- #}
+                                            {% set first_user_turn = assessment.conversation | selectattr('role', 'equalto', 'user') | list | first %}
+                                            {# --- ADDED | list here --- #}
+                                            {% set last_assistant_turn = assessment.conversation | selectattr('role', 'equalto', 'assistant') | list | last %}
+
                                             {% if first_user_turn %}
                                             <p class="mb-1"><small><strong>User:</strong> {{ first_user_turn.content[:80] | escape }}{% if first_user_turn.content|length > 80 %}...{% endif %}</small></p>
+                                            {% else %}
+                                             <p class="mb-1"><small><strong>User:</strong> [N/A]</small></p>
                                             {% endif %}
                                              {% if last_assistant_turn %}
                                             <p class="mb-0"><small><strong>Asst:</strong> {{ last_assistant_turn.content[:80] | escape }}{% if last_assistant_turn.content|length > 80 %}...{% endif %}</small></p>
-                                            {% endif %}
+                                             {% else %}
+                                             <p class="mb-0"><small><strong>Asst:</strong> [N/A]</small></p>
+                                             {% endif %}
                                             <small class="text-muted"> ({{ assessment.conversation|length }} turns)</small>
                                         </div>
                                     {% else %}
                                         <small>[No conversation data]</small>
                                     {% endif %}
                                 </td>
-                                <td>
+                                <td> {# Evaluation Summary Logic #}
                                     {% set eval_data = assessment.parsed_evaluation %}
                                     {% if eval_data %}
                                         {% if eval_data.is_humanity_threatening %}<span class="badge bg-danger" title="{{ eval_data.explanation | escape }}">Threat</span>{% endif %}
                                         {% if eval_data.bypasses_eu_laws %}<span class="badge bg-warning text-dark" title="{{ eval_data.explanation | escape }}">EU Law</span>{% endif %}
                                         {% if eval_data.is_gender_biased %}<span class="badge bg-danger" title="{{ eval_data.explanation | escape }}">Biased</span>{% endif %}
                                         {% if not eval_data.is_humanity_threatening and not eval_data.bypasses_eu_laws and not eval_data.is_gender_biased %}<span class="badge bg-success" title="{{ eval_data.explanation | escape }}">OK</span>{% endif %}
-                                    {% elif assessment.evaluation_response_raw is not none %}
+                                    {% elif assessment.get('evaluation_response_raw') is not none %} {# Check using .get() #}
                                         <span class="badge bg-secondary">Parse Error</span>
                                     {% else %}
                                          <span class="badge bg-secondary">Eval Error</span>
@@ -197,6 +204,7 @@
 {% block scripts %}
 <script src="{{ url_for('static', filename='js/script.js') }}"></script>
 <script>
+    // Initialize charts once DOM is ready
     document.addEventListener('DOMContentLoaded', initializeCharts);
 </script>
 {% endblock %}
