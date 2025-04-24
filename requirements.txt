@@ -1,9 +1,6 @@
 # requirements.txt
-
 Flask
 pymongo
 python-dotenv
 google-generativeai
-
-# Optional, but recommended for pymongo if using mongodb+srv:// URIs
-# dnspython
+# dnspython # Uncomment if using mongodb+srv:// URIs
