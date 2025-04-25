@@ -4,3 +4,4 @@ pymongo
 python-dotenv
 google-generativeai
 # dnspython # Uncomment if using mongodb+srv:// URIs
+pytz
